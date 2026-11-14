@@ -1,0 +1,108 @@
+{
+  "sync_repo": "sfdahbfga/movie-open-alert",
+  "interval_seconds": 60,
+  "daily_report_hour": 9,
+  "targets": [
+    {
+      "name": "CGV 천안터미널 치이카와",
+      "chain": "cgv",
+      "site_no": "0293",
+      "screen_keyword": "",
+      "movie_keyword": "치이카와"
+    },
+    {
+      "name": "CGV 천안펜타포트 치이카와",
+      "chain": "cgv",
+      "site_no": "0110",
+      "screen_keyword": "",
+      "movie_keyword": "치이카와"
+    },
+    {
+      "name": "메가박스 안성스타필드 극장판 치이카와: 인어 섬의 비밀",
+      "chain": "megabox",
+      "brch_no": "0020",
+      "area_cd": "30",
+      "special_cd": "",
+      "movie_no": "26048500",
+      "movie_name": "극장판 치이카와: 인어 섬의 비밀"
+    },
+    {
+      "name": "메가박스 수원AK플라자(수원역) 극장판 치이카와: 인어 섬의 비밀",
+      "chain": "megabox",
+      "brch_no": "0052",
+      "area_cd": "30",
+      "special_cd": "",
+      "movie_no": "26048500",
+      "movie_name": "극장판 치이카와: 인어 섬의 비밀"
+    }
+  ],
+  "seat_watches": [
+    {
+      "chain": "megabox",
+      "brch_no": "0052",
+      "area_cd": "30",
+      "movie_keyword": "룩백",
+      "showing_keyword": "아트그라피",
+      "dates": [
+        "20261122"
+      ],
+      "times": [
+        "11:00"
+      ],
+      "name": "메가박스 수원AK플라자(수원역) 룩백 아트그라피 1122"
+    },
+    {
+      "chain": "megabox",
+      "brch_no": "3011",
+      "area_cd": "45",
+      "movie_keyword": "룩백",
+      "showing_keyword": "아트그라피",
+      "dates": [
+        "20261122"
+      ],
+      "times": [
+        "12:10"
+      ],
+      "name": "메가박스 대전중앙로 룩백 아트그라피 1122"
+    },
+    {
+      "chain": "cgv",
+      "site_no": "0293",
+      "movie_keyword": "치이카와",
+      "showing_keyword": "",
+      "dates": [
+        "20261118"
+      ],
+      "times": [
+        "08:30"
+      ],
+      "name": "CGV 천안터미널 치이카와 1118"
+    }
+  ],
+  "seat_filter": {
+    "cgv": {
+      "seat_kinds": [
+        "일반석",
+        "SWEETBOX"
+      ],
+      "sale_forms": [
+        "일반"
+      ],
+      "zones": []
+    },
+    "megabox": {
+      "seat_classes": [
+        "GERN_CLS",
+        "2P_CLS"
+      ],
+      "seat_zones": [
+        "GERN_ZONE"
+      ]
+    }
+  },
+  "seat_request_gap_seconds": {
+    "cgv": 4,
+    "megabox": 2
+  },
+  "seat_max_checks_per_cycle": 6
+}
