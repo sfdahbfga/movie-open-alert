@@ -71,8 +71,18 @@ PHONE_TEMPLATE = r"""#!/data/data/com.termux/files/usr/bin/bash
 # movie-open-alert installer for Android (Termux). ASCII only.
 set -e
 APP="$HOME/movie-open-alert"
-echo "[1/4] installing python..."
-pkg install -y python >/dev/null
+echo "[1/4] checking python..."
+if command -v python >/dev/null 2>&1; then
+  echo "python already installed - skip"
+else
+  # a mirror can be mid-sync; retry a few times before giving up
+  for i in 1 2 3; do
+    pkg install -y python >/dev/null && break
+    echo "retry ($i) - if this keeps failing, run: termux-change-repo"
+    sleep 5
+  done
+  command -v python >/dev/null 2>&1 || { echo "FAILED: python not installed. Run termux-change-repo and try again."; exit 1; }
+fi
 echo "[2/4] unpacking program..."
 pkill -f "movie-open-alert/run.sh" 2>/dev/null || true
 pkill -f "python -u main.py" 2>/dev/null || true
