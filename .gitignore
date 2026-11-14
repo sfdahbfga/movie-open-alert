@@ -1,0 +1,12 @@
+# 각 기기에만 있어야 하는 파일 (저장소에 올리지 않음)
+secret.json
+device.json
+seat_state.json
+seat_state.json.tmp
+*.new
+*.log
+*.log.*
+alert.out
+oracle_setup.sh
+phone_setup.sh
+__pycache__/
