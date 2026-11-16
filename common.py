@@ -105,7 +105,15 @@ def http_request(url, params=None, json_body=None, headers=None, timeout=15):
 
 
 def http_json(url, **kwargs):
-    return json.loads(http_request(url, **kwargs).decode("utf-8-sig"))
+    text = http_request(url, **kwargs).decode("utf-8-sig", errors="replace")
+    try:
+        return json.loads(text)
+    except ValueError:
+        # 데이터 대신 웹페이지(점검·장애·차단 안내 등)가 온 경우: 무엇이 왔는지 알림에 보이게
+        import re
+        title = re.search(r"<title>([^<]*)</title>", text, re.I)
+        what = title.group(1).strip() if title else (text.strip()[:80] or "빈 응답")
+        raise RuntimeError(f"데이터 대신 다른 응답을 받음: '{what}' (사이트 점검·장애이거나 접속이 막혔을 수 있어요)")
 
 
 ##################################################
