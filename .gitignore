@@ -10,3 +10,6 @@ alert.out
 oracle_setup.sh
 phone_setup.sh
 __pycache__/
+heartbeat.txt
+watchdog_restart.txt
+watchdog.sh
