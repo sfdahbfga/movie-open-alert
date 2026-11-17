@@ -113,7 +113,7 @@ def daily_report_main(report_hour):
 # 멈춤 감지 + 자동 재시작 (휴대폰용)
 # - 프로그램이 1분마다 heartbeat.txt에 현재 시각을 적음
 # - 휴대폰에서는 watchdog.sh를 만들어 둠. 안드로이드 예약 작업(termux-job-scheduler)이
-#   15분마다 이 스크립트를 실행하고, 기록이 10분 넘게 멈춰 있으면 알리미를 다시 켬
+#   15분마다 이 스크립트를 실행하고, 기록이 3분 넘게 멈춰 있으면 알리미를 다시 켬
 # - 다시 켜지면 '언제부터 얼마나 멈췄는지'를 디스코드로 알림
 
 HEARTBEAT_PATH = os.path.join(BASE_DIR, "heartbeat.txt")
@@ -121,11 +121,11 @@ WATCHDOG_MARK_PATH = os.path.join(BASE_DIR, "watchdog_restart.txt")
 WATCHDOG_PATH = os.path.join(BASE_DIR, "watchdog.sh")
 STALL_SECONDS = 600
 WATCHDOG_SCRIPT = """#!/data/data/com.termux/files/usr/bin/bash
-# 알리미가 10분 넘게 멈춰 있으면 다시 켬 (안드로이드 예약 작업이 15분마다 실행)
+# 알리미 기록이 3분 넘게 멈춰 있으면 다시 켬 (안드로이드 예약 작업이 15분마다 실행)
 cd "$HOME/movie-open-alert" || exit 0
 now=$(date +%s)
 last=$(cat heartbeat.txt 2>/dev/null || echo 0)
-if [ $((now - last)) -gt 600 ]; then
+if [ $((now - last)) -gt 180 ]; then
   echo "$now" > watchdog_restart.txt
   pkill -f movie-open-alert/run.sh
   pkill -f "python -u main.py"
@@ -167,7 +167,8 @@ def previous_stop_message():
         except OSError:
             pass
     gap = time.time() - last
-    if not last or gap <= STALL_SECONDS:
+    # 확인 장치가 다시 켠 경우는 항상 알리고, 그 밖에는 10분 넘게 멈췄을 때만 알림
+    if not last or gap <= (120 if by_watchdog else STALL_SECONDS):
         return None
     start = datetime.fromtimestamp(last).strftime("%m/%d %H:%M")
     minutes = int(gap // 60)
