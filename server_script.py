@@ -8,7 +8,7 @@ import tarfile
 from common import BASE_DIR, load_config, save_json, get_webhook_url
 
 OUTPUT_PATH = os.path.join(BASE_DIR, "oracle_setup.sh")
-APP_FILES = ["main.py", "common.py", "cgv.py", "megabox.py", "seats.py", "sync.py"]
+APP_FILES = ["main.py", "common.py", "cgv.py", "megabox.py", "lotte.py", "seats.py", "sync.py"]
 LIMIT = 30000  # 오라클 cloud-init 크기 제한(약 32KB)보다 조금 작게
 
 TEMPLATE = r"""#!/bin/bash
@@ -127,14 +127,15 @@ echo "Keep Termux running in the background (do not tap 'Exit' in its notificati
 PHONE_OUTPUT_PATH = os.path.join(BASE_DIR, "phone_setup.sh")
 
 
-def _build(template, output_path, chains):
+def _build(template, output_path, role):
     """chains에 해당하는 영화관만 담아서 설치 스크립트를 만듦"""
     config = load_config()
+    chains = set((config.get("device_roles") or {}).get(role) or [])
     mine = [e for e in config["targets"] + (config.get("seat_watches") or []) if e["chain"] in chains]
     if not mine and not config.get("sync_repo"):
         raise RuntimeError("이 설치 파일에 넣을 감시 대상이 없습니다.")
     # 이 기기가 맡을 체인 + 자동 동기화 저장소 (감시 목록 전체는 그대로 넣고, 실행할 때 체인으로 거름)
-    device = {"chains": sorted(chains), "repo": config.get("sync_repo", ""), "branch": "main"}
+    device = {"role": role, "chains": sorted(chains), "repo": config.get("sync_repo", ""), "branch": "main"}
     buffer = io.BytesIO()
     with tarfile.open(fileobj=buffer, mode="w:gz") as tar:
         for name in APP_FILES:
@@ -159,17 +160,16 @@ def _build(template, output_path, chains):
     return output_path, size, mine
 
 
-# CGV는 클라우드(해외/데이터센터) 서버 접속을 막아서(403) 오라클에는 메가박스만 넣음
-SERVER_CHAINS = {"megabox"}
-PHONE_CHAINS = {"cgv"}
+# 어떤 체인을 어디서 돌릴지는 config.json의 device_roles로 정함
+# (CGV는 클라우드 서버 접속을 막아서(403) 휴대폰에서 돌림)
 
 
 def build_cloud_init(output_path=OUTPUT_PATH):
-    return _build(TEMPLATE, output_path, SERVER_CHAINS)
+    return _build(TEMPLATE, output_path, "server")
 
 
 def build_phone_script(output_path=PHONE_OUTPUT_PATH):
-    return _build(PHONE_TEMPLATE, output_path, PHONE_CHAINS)
+    return _build(PHONE_TEMPLATE, output_path, "phone")
 
 
 if __name__ == "__main__":

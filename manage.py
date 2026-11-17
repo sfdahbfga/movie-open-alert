@@ -6,10 +6,11 @@ from datetime import datetime
 
 import cgv
 import megabox
+import lotte
 from common import BASE_DIR, load_config, save_config, send_discord, get_webhook_url, set_webhook_url, pretty_date
 from server_script import build_cloud_init, build_phone_script
 
-CHAIN_NAME = {"cgv": "CGV", "megabox": "메가박스"}
+CHAIN_NAME = {"cgv": "CGV", "megabox": "메가박스", "lottecinema": "롯데시네마"}
 
 
 def ask(prompt):
@@ -90,10 +91,34 @@ def add_megabox(config):
     finish_add(config, target)
 
 
+def _pick_lotte_theater():
+    picked = choose(lotte.search_theaters(ask("\n롯데시네마 극장 이름 검색 (예: 천안) > ")),
+                    lambda t: f"{t['name']}  (극장번호 {t['cinema_id']})")
+    if not picked:
+        return None
+    return {"division": picked["division"], "detail": picked["detail"], "cinema_id": picked["cinema_id"]}, picked["name"]
+
+
+def add_lotte(config):
+    r = _pick_lotte_theater()
+    if not r:
+        return
+    target, theater_name = r
+    print("\n특정 상영관만 감시하려면 상영관 이름에 들어있는 단어를 입력하세요.")
+    print("  예) 수퍼플렉스, 샤롯데, 리클라이너, 광음  /  극장 전체를 감시하려면 그냥 엔터")
+    screen_keyword = ask("상영관 키워드 > ")
+    print("\n특정 영화만 감시하려면 제목 일부를 입력하세요. (모든 영화: 그냥 엔터)")
+    movie_keyword = ask("영화 제목 키워드 > ")
+    name = " ".join(x for x in ["롯데시네마", theater_name, screen_keyword, movie_keyword] if x)
+    target.update({"name": name, "chain": "lottecinema",
+                   "screen_keyword": screen_keyword, "movie_keyword": movie_keyword})
+    finish_add(config, target)
+
+
 def finish_add(config, target):
     print("\n현재 예매가 열려 있는 회차를 확인하는 중...")
     try:
-        fetch = cgv.fetch_showings if target["chain"] == "cgv" else megabox.fetch_showings
+        fetch = {"cgv": cgv, "megabox": megabox, "lottecinema": lotte}[target["chain"]].fetch_showings
         showings = fetch(target)
         dates = sorted({x.split("|")[0] for x in showings})
         if showings:
@@ -146,11 +171,20 @@ def remove_target(config):
 
 def add_seat_watch(config):
     print("\n빈자리 감시를 추가합니다. (일반석이 비면 디스코드로 알림)")
-    print("  ※ CGV는 휴대폰(Termux), 메가박스는 오라클 서버에서 돌아갑니다.")
-    chain = ask("극장 체인 — 1: CGV, 2: 메가박스 > ")
-    if chain not in ("1", "2"):
+    roles = config.get("device_roles") or {}
+    print(f"  ※ 서버(오라클): {', '.join(CHAIN_NAME[c] for c in roles.get('server', []))}  /  "
+          f"휴대폰: {', '.join(CHAIN_NAME[c] for c in roles.get('phone', []))}")
+    chain = ask("극장 체인 — 1: CGV, 2: 메가박스, 3: 롯데시네마 > ")
+    if chain not in ("1", "2", "3"):
         return
-    if chain == "1":
+    if chain == "3":
+        r = _pick_lotte_theater()
+        if not r:
+            return
+        watch, theater_name = r
+        watch["chain"] = "lottecinema"
+        theater_name = "롯데시네마 " + theater_name
+    elif chain == "1":
         picked = choose(cgv.search_theaters(ask("\nCGV 극장 이름 검색 (예: 용산) > ")),
                         lambda t: f"{t[1]}  (극장번호 {t[0]})")
         if not picked:
@@ -188,7 +222,7 @@ def add_seat_watch(config):
 
     print("\n조건에 맞는 회차를 확인하는 중... (회차 목록만 조회)")
     try:
-        site = cgv if watch["chain"] == "cgv" else megabox
+        site = {"cgv": cgv, "megabox": megabox, "lottecinema": lotte}[watch["chain"]]
         showings = site.list_seat_showings(watch)
         if not showings:
             print("  → 지금은 조건에 맞는 회차가 없어요. (예매가 아직 안 열렸으면 열린 뒤부터 감시돼요)")
@@ -239,10 +273,11 @@ def make_server_script(config):
     try:
         path, size, targets = build_cloud_init()
     except RuntimeError as e:
-        print(e, "(오라클 서버에는 메가박스 영화관만 들어갑니다)")
+        print(e)
         return
     print(f"\n✅ 오라클 서버 설치 파일을 만들었습니다: {path}")
-    print("   들어간 감시 (메가박스만 — CGV는 클라우드 서버 접속을 막아서 휴대폰에서 돌립니다):")
+    chains = (config.get("device_roles") or {}).get("server", [])
+    print(f"   맡는 체인: {', '.join(CHAIN_NAME[c] for c in chains)}  (CGV는 클라우드 서버 접속을 막아서 휴대폰에서 돌립니다)")
     for t in targets:
         print("    ·", ("[빈자리] " if "showing_keyword" in t else "[예매 오픈] ") + t["name"])
     print("   오라클에서 서버(인스턴스)를 만들 때 'cloud-init 스크립트' 파일로 넣으면 됩니다.")
@@ -256,10 +291,11 @@ def make_phone_script(config):
     try:
         path, size, targets = build_phone_script()
     except RuntimeError as e:
-        print(e, "(휴대폰에는 CGV 영화관만 들어갑니다)")
+        print(e)
         return
     print(f"\n✅ 휴대폰(Termux) 설치 파일을 만들었습니다: {path}")
-    print("   들어간 감시 (CGV만):")
+    chains = (config.get("device_roles") or {}).get("phone", [])
+    print(f"   맡는 체인: {', '.join(CHAIN_NAME[c] for c in chains)}")
     for t in targets:
         print("    ·", ("[빈자리] " if "showing_keyword" in t else "[예매 오픈] ") + t["name"])
     print("   이 파일을 휴대폰의 '다운로드(Download)' 폴더로 옮긴 뒤 Termux에서 실행하세요.")
@@ -316,10 +352,11 @@ def main():
         ("감시 삭제", remove_target),
         ("디스코드 웹후크 설정", set_webhook),
         ("테스트 알림 보내기", test_message),
-        ("오라클 서버 설치 파일 만들기 (메가박스)", make_server_script),
-        ("휴대폰 설치 파일 만들기 (CGV)", make_phone_script),
+        ("오라클 서버 설치 파일 만들기", make_server_script),
+        ("휴대폰 설치 파일 만들기", make_phone_script),
         ("빈자리 감시 추가", add_seat_watch),
         ("GitHub에 지금 올리기", manual_push),
+        ("롯데시네마 영화관 추가", add_lotte),
     ]
     while True:
         print("\n===== 예매 오픈 알리미 설정 =====")

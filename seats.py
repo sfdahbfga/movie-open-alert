@@ -15,8 +15,14 @@ import cgv
 import megabox
 from common import BASE_DIR, load_json, save_json, save_log_info, save_log_error, pretty_date
 
+try:
+    import lotte
+except ImportError:
+    lotte = None
 SITES = {"cgv": cgv, "megabox": megabox}
-CHAIN_NAME = {"cgv": "CGV", "megabox": "메가박스"}
+if lotte:
+    SITES["lottecinema"] = lotte
+CHAIN_NAME = {"cgv": "CGV", "megabox": "메가박스", "lottecinema": "롯데시네마"}
 MAX_SEATS_IN_MESSAGE = 30
 STATE_PATH = os.path.join(BASE_DIR, "seat_state.json")  # 다시 시작해도 '이미 알린 좌석'을 기억하기 위한 파일
 _state_lock = threading.Lock()

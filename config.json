@@ -85,11 +85,30 @@
       "seat_zones": [
         "GERN_ZONE"
       ]
+    },
+    "lottecinema": {
+      "seat_kinds": [
+        "일반석",
+        "발받침석",
+        "리클라이너석",
+        "시네커플석",
+        "시네커플 발받침석"
+      ]
     }
   },
   "seat_request_gap_seconds": {
     "cgv": 4,
-    "megabox": 2
+    "megabox": 2,
+    "lottecinema": 3
   },
-  "seat_max_checks_per_cycle": 6
+  "seat_max_checks_per_cycle": 6,
+  "device_roles": {
+    "server": [
+      "megabox",
+      "lottecinema"
+    ],
+    "phone": [
+      "cgv"
+    ]
+  }
 }

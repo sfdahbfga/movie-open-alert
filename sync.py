@@ -11,12 +11,36 @@ import hashlib
 from common import BASE_DIR, http_request, load_json, save_json, save_log_info, save_log_error
 
 DEVICE_PATH = os.path.join(BASE_DIR, "device.json")   # 이 기기 설정 (어떤 체인을 돌릴지, 저장소 주소)
-CODE_FILES = ["main.py", "common.py", "cgv.py", "megabox.py", "seats.py", "sync.py"]
+CODE_FILES = ["main.py", "common.py", "cgv.py", "megabox.py", "lotte.py", "seats.py", "sync.py"]
 CHECK_SECONDS = 300  # 5분 (GitHub 비로그인 요청 제한: 시간당 60번 → 5분마다면 12번이라 여유)
 
 
 def load_device():
     return load_json(DEVICE_PATH, {})
+
+
+def device_role(device=None):
+    """이 기기의 역할: 'server'(오라클) / 'phone'(휴대폰). 예전 설치본은 chains로 추측"""
+    device = load_device() if device is None else device
+    if device.get("role"):
+        return device["role"]
+    chains = set(device.get("chains") or [])
+    if "megabox" in chains:
+        return "server"
+    if "cgv" in chains:
+        return "phone"
+    return ""
+
+
+def device_chains(config, device=None):
+    """이 기기가 맡을 극장 체인. 저장소 설정(device_roles)을 먼저 따르고, 없으면 설치 때 정한 값.
+    빈 집합이면 '전부' (PC처럼 기기 설정이 없는 곳)"""
+    device = load_device() if device is None else device
+    role = device_role(device)
+    roles = config.get("device_roles") or {}
+    if role and role in roles:
+        return set(roles[role])
+    return set(device.get("chains") or [])
 
 
 def _sha256(data):
@@ -97,7 +121,6 @@ def sync_main(message_queue):
     repo = device.get("repo")
     if not repo:
         return  # PC 등 동기화 설정이 없는 곳에서는 아무것도 안 함
-    chains = set(device.get("chains") or [])
     first_wait = 60  # 켜지고 1분 뒤 첫 확인
     time.sleep(first_wait)
     fail = 0
@@ -110,7 +133,9 @@ def sync_main(message_queue):
                 save_log_info(f"[동기화] 커밋 번호 확인 실패, 파일 직접 비교로 대신함: {e}")
                 sha = device_branch()
                 device["applied_sha"] = None
-            if sha != device.get("applied_sha"):
+            # 새로 추가된 코드 파일이 이 기기에 아직 없으면(예: 예전 버전이 모르던 lotte.py) 강제로 받음
+            missing = [n for n in CODE_FILES if not os.path.exists(os.path.join(BASE_DIR, n))]
+            if sha != device.get("applied_sha") or missing:
                 old_cfg = load_json(os.path.join(BASE_DIR, "config.json"), {})
                 changed = fetch_update(repo, sha)
                 if len(sha) == 40:
@@ -119,7 +144,7 @@ def sync_main(message_queue):
                 if changed:
                     new_cfg = (json.loads(changed["config.json"].decode("utf-8-sig"))
                                if "config.json" in changed else old_cfg)
-                    lines = describe_config_change(old_cfg, new_cfg, chains)
+                    lines = describe_config_change(old_cfg, new_cfg, device_chains(new_cfg, device))
                     code = [n for n in changed if n.endswith(".py")]
                     apply_update(changed)
                     msg = ["🔄 저장소에서 변경 사항을 받아 다시 시작합니다."]

@@ -8,12 +8,18 @@ from datetime import datetime
 import cgv
 import megabox
 from seats import seat_watch_main, Pacer
-from sync import sync_main, load_device
+from sync import sync_main, device_chains
+try:
+    import lotte   # 롯데시네마 (파일이 아직 없는 옛 설치본에서도 멈추지 않게)
+except ImportError:
+    lotte = None
 from common import (load_config, setup_logging, save_log_info, save_log_error,
                     get_webhook_url, send_discord, pretty_date)
 
 FETCHERS = {"cgv": cgv.fetch_showings, "megabox": megabox.fetch_showings}
-CHAIN_NAME = {"cgv": "CGV", "megabox": "메가박스"}
+if lotte:
+    FETCHERS["lottecinema"] = lotte.fetch_showings
+CHAIN_NAME = {"cgv": "CGV", "megabox": "메가박스", "lottecinema": "롯데시네마"}
 ERROR_ALERT_COUNT = 10  # 이만큼 연속으로 실패하면 디스코드로 경고
 
 message_queue = queue.Queue()
@@ -105,9 +111,12 @@ def main():
     setup_logging()
     config = load_config()
     # 이 기기가 맡은 체인만 실행 (오라클 서버 = 메가박스, 휴대폰 = CGV). PC처럼 device.json이 없으면 전부.
-    device_chains = set(load_device().get("chains") or [])
-    targets = [t for t in config["targets"] if not device_chains or t["chain"] in device_chains]
-    seat_watches = [w for w in config.get("seat_watches") or [] if not device_chains or w["chain"] in device_chains]
+    chains = device_chains(config)
+    # 이 기기가 맡은 체인 + 지금 실행할 수 있는 체인만
+    targets = [t for t in config["targets"]
+               if (not chains or t["chain"] in chains) and t["chain"] in FETCHERS]
+    seat_watches = [w for w in config.get("seat_watches") or []
+                    if (not chains or w["chain"] in chains) and w["chain"] in FETCHERS]
     interval = max(30, int(config.get("interval_seconds", 60)))
 
     threading.Thread(target=sender_main, daemon=True).start()
@@ -139,7 +148,7 @@ def main():
 
     # 좌석 배치도 요청은 사이트별로 하나의 '간격 조절기'를 같이 씀 (여러 감시가 동시에 몰리지 않게)
     gaps = config.get("seat_request_gap_seconds") or {}
-    pacers = {chain: Pacer(float(gaps.get(chain, 4))) for chain in ("cgv", "megabox")}
+    pacers = {chain: Pacer(float(gaps.get(chain, 4))) for chain in FETCHERS}
     for w in seat_watches:
         threading.Thread(target=seat_watch_main,
                          args=(w, config, message_queue, pacers[w["chain"]], status, interval, ERROR_ALERT_COUNT),

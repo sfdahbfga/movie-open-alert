@@ -33,9 +33,17 @@ DEFAULT_CONFIG = {
             "seat_classes": ["GERN_CLS", "2P_CLS"],  # 좌석 등급 seatClassCd (일반, 2인소파석. 장애인석 DISABLED_CLS는 뺌)
             "seat_zones": ["GERN_ZONE"],   # 구역 seatZoneCd
         },
+        "lottecinema": {
+            # 좌석 종류 = SeatBlockSet에서 처음 Y가 나오는 위치 (롯데시네마 예매 화면 코드와 같은 규칙)
+            # 일반석(전부 N), 발받침석, 리클라이너석(리클라이너관은 전 좌석이 이것), 시네커플석은 포함
+            # 뺀 것: 장애인석, 특별요금석, 슈퍼바이브석, 씨네비즈 등
+            "seat_kinds": ["일반석", "발받침석", "리클라이너석", "시네커플석", "시네커플 발받침석"],
+        },
     },
-    "seat_request_gap_seconds": {"cgv": 4, "megabox": 2},  # 좌석 배치도 요청 사이 최소 간격(초)
+    "seat_request_gap_seconds": {"cgv": 4, "megabox": 2, "lottecinema": 3},  # 좌석 배치도 요청 사이 최소 간격(초)
     "seat_max_checks_per_cycle": 6,   # 한 번(1분)에 좌석 배치도를 최대 몇 개까지 열어볼지
+    # 어떤 기기가 어떤 극장 체인을 맡을지 (여기를 바꾸면 재설치 없이 5분 안에 적용)
+    "device_roles": {"server": ["megabox", "lottecinema"], "phone": ["cgv"]},
 }
 
 USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -64,6 +72,10 @@ def load_config():
     config = load_json(CONFIG_PATH, {})
     for key, value in DEFAULT_CONFIG.items():
         config.setdefault(key, json.loads(json.dumps(value)))  # 기본값 복사본
+    # 새로 추가된 극장 체인의 기본 설정도 채움 (예: 예전 설정 파일에 롯데시네마 좌석 필터가 없을 때)
+    for key in ("seat_filter", "seat_request_gap_seconds"):
+        for chain, value in DEFAULT_CONFIG[key].items():
+            config[key].setdefault(chain, json.loads(json.dumps(value)))
     # 이전 버전의 기본 좌석 설정을 그대로 쓰고 있으면 새 기본값으로 갱신
     old_default = {"cgv": {"seat_kinds": ["일반석"], "sale_forms": ["일반"], "zones": []},
                    "megabox": {"seat_classes": ["GERN_CLS"], "seat_zones": ["GERN_ZONE"]}}
@@ -86,7 +98,7 @@ def save_config(config):
 ##################################################
 # 인터넷 요청 (requests 라이브러리 대신 파이썬 기본 urllib 사용)
 
-def http_request(url, params=None, json_body=None, headers=None, timeout=15):
+def http_request(url, params=None, json_body=None, form=None, headers=None, timeout=15):
     if params:
         url += ("&" if "?" in url else "?") + urllib.parse.urlencode(params)
     data = None
@@ -96,6 +108,9 @@ def http_request(url, params=None, json_body=None, headers=None, timeout=15):
     if json_body is not None:
         data = json.dumps(json_body, ensure_ascii=False).encode("utf-8")
         headers.setdefault("Content-Type", "application/json; charset=UTF-8")
+    if form is not None:
+        data = urllib.parse.urlencode(form).encode("utf-8")
+        headers.setdefault("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
     request = urllib.request.Request(url, data=data, headers=headers, method="POST" if data else "GET")
     with urllib.request.urlopen(request, timeout=timeout) as response:
         body = response.read()
