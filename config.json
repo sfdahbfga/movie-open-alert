@@ -36,22 +36,7 @@
       "movie_name": "극장판 치이카와: 인어 섬의 비밀"
     }
   ],
-  "seat_watches": [
-    {
-      "chain": "megabox",
-      "brch_no": "3011",
-      "area_cd": "45",
-      "movie_keyword": "룩백",
-      "showing_keyword": "아트그라피",
-      "dates": [
-        "20261122"
-      ],
-      "times": [
-        "12:10"
-      ],
-      "name": "메가박스 대전중앙로 룩백 아트그라피 1122"
-    }
-  ],
+  "seat_watches": [],
   "seat_filter": {
     "cgv": {
       "seat_kinds": [
