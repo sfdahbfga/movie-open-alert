@@ -39,20 +39,6 @@
   "seat_watches": [
     {
       "chain": "megabox",
-      "brch_no": "0052",
-      "area_cd": "30",
-      "movie_keyword": "룩백",
-      "showing_keyword": "아트그라피",
-      "dates": [
-        "20261122"
-      ],
-      "times": [
-        "11:00"
-      ],
-      "name": "메가박스 수원AK플라자(수원역) 룩백 아트그라피 1122"
-    },
-    {
-      "chain": "megabox",
       "brch_no": "3011",
       "area_cd": "45",
       "movie_keyword": "룩백",
