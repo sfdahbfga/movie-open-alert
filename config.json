@@ -81,5 +81,106 @@
     "phone": [
       "cgv"
     ]
-  }
+  },
+  "coupon_watches": [
+    {
+      "chain": "megabox",
+      "event_no": "21585",
+      "picks": [
+        "1"
+      ],
+      "name": "메가박스 [헝거게임 50번째 추첨의 날] 선착순 빵원티켓 ➕"
+    },
+    {
+      "chain": "megabox",
+      "event_no": "21637",
+      "picks": [
+        "1"
+      ],
+      "name": "메가박스 [아름다운 초저녁달] 선착순 빵원티켓 ➕"
+    },
+    {
+      "chain": "megabox",
+      "event_no": "21643",
+      "picks": [
+        "1"
+      ],
+      "name": "메가박스 [미트 페어런츠 4] 선착순 빵원티켓 ➕"
+    },
+    {
+      "chain": "megabox",
+      "event_no": "21645",
+      "picks": [
+        "1"
+      ],
+      "name": "메가박스 [옆에서 숨만 쉬어도 좋아] 선착순 빵원티켓 ➕"
+    },
+    {
+      "chain": "megabox",
+      "event_no": "21656",
+      "picks": [
+        "1"
+      ],
+      "name": "메가박스 [폴2: 데드포인트] 선착순 빵원티켓 ➕"
+    },
+    {
+      "chain": "megabox",
+      "event_no": "21672",
+      "picks": [
+        "1"
+      ],
+      "name": "메가박스 [슬픈 열대] 선착순 빵원티켓 ➕"
+    },
+    {
+      "chain": "megabox",
+      "event_no": "21690",
+      "picks": [
+        "1",
+        "2",
+        "3"
+      ],
+      "name": "메가박스 [헥스: 마녀왕국] 선착순 빵원티켓 ➕"
+    },
+    {
+      "chain": "megabox",
+      "event_no": "21708",
+      "picks": [
+        "1",
+        "2"
+      ],
+      "name": "메가박스 [헝거게임 50번째 추첨의 날] 선착순 빵원티켓 ➕"
+    },
+    {
+      "chain": "megabox",
+      "event_no": "21715",
+      "picks": [
+        "1"
+      ],
+      "name": "메가박스 [아름다운 초저녁달] 선착순 빵원티켓 ➕"
+    },
+    {
+      "chain": "megabox",
+      "event_no": "21673",
+      "picks": [
+        "1"
+      ],
+      "name": "메가박스 [스트레인저 - 무황인담] 선착순 빵원티켓"
+    },
+    {
+      "chain": "megabox",
+      "event_no": "21687",
+      "picks": [
+        "1"
+      ],
+      "name": "메가박스 [고인아파트] 선착순 빵원티켓"
+    },
+    {
+      "chain": "megabox",
+      "event_no": "21691",
+      "picks": [
+        "1"
+      ],
+      "name": "메가박스 [실낙원] 선착순 빵원티켓"
+    }
+  ]
 }
