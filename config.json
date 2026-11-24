@@ -41,6 +41,13 @@
       "site_no": "0293",
       "screen_keyword": "imax",
       "movie_keyword": "듄"
+    },
+    {
+      "name": "CGV 천안터미널 IMAX 듄",
+      "chain": "cgv",
+      "site_no": "0293",
+      "screen_keyword": "IMAX",
+      "movie_keyword": "듄"
     }
   ],
   "seat_watches": [
