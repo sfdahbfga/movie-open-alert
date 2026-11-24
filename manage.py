@@ -250,57 +250,86 @@ def add_seat_watch(config):
 
 def add_coupon_watch(config):
     print("\n선착순 할인 쿠폰 취소분 감시를 추가합니다.")
-    print("  (메가박스 빵원티켓·플러스, CGV 서프라이즈·스피드 쿠폰, 롯데시네마 무비싸다구)")
     print("  마감된 쿠폰이 취소로 다시 풀리면 디스코드로 알려 줘요. 쿠폰 받기는 앱에서 직접 하세요.")
+    chain = {"1": "cgv", "2": "megabox", "3": "lottecinema"}.get(
+        ask("극장 체인 — 1: CGV (서프라이즈·스피드 쿠폰), 2: 메가박스 (빵원티켓), 3: 롯데시네마 (무비싸다구) > "))
+    if not chain:
+        return
+    print(f"\n{CHAIN_NAME[chain]}에서 진행 중인 쿠폰을 모두 불러오는 중... (이벤트가 많으면 조금 걸려요)")
     try:
-        active = coupons.cgv_active_events()
+        rows = coupons.all_active_coupons(chain)
     except Exception as e:
-        active = []
-        print("  (CGV 진행 중 쿠폰 목록을 불러오지 못함:", e, ")")
-    if active:
-        print("\n지금 진행 중인 CGV 서프라이즈/스피드 쿠폰:")
-        for i, (no, mov) in enumerate(active, 1):
-            print(f"  {i}. {mov}  (이벤트번호 {no})")
-        print("  → 위 번호를 입력하거나, 다른 이벤트는 주소를 붙여넣으세요.")
-    print("\n이벤트 페이지 주소를 붙여넣으세요. (브라우저 주소창의 주소 전체)")
+        print("  목록을 불러오지 못했어요:", e)
+        rows = []
+    if rows:
+        print(f"\n진행 중인 쿠폰 전체 ({len(rows)}개):")
+        last_event = None
+        for i, (no, event_name, period, c, err) in enumerate(rows, 1):
+            if no != last_event:
+                print(f"\n  ■ {event_name}" + (f"  [{period}]" if period else ""))
+                last_event = no
+            print(f"    {i}. " + (coupons.describe(c) if c else f"(이벤트 전체) — {err}"))
+    else:
+        print("  지금 진행 중인 쿠폰을 찾지 못했어요.")
+    print("\n감시할 번호를 쉼표로 입력하세요. (예: 1,4,5)")
+    print("  목록에 없는 이벤트는 이벤트 페이지 주소를 붙여넣으세요.")
     s = ask("번호 또는 주소 (취소: 엔터) > ")
     if not s:
         return
-    if s.isdigit() and active and 1 <= int(s) <= len(active):
-        chain, event_no = "cgv", active[int(s) - 1][0]
-    else:
-        chain, event_no = coupons.parse_event_link(s)
-    if not chain:
-        print("  주소에서 이벤트 번호를 찾지 못했어요. (메가박스 eventNo=, CGV evntNo=, 롯데시네마 eventId= 가 들어간 주소)")
-        return
-    watch = {"chain": chain, "event_no": event_no, "picks": []}
-    print("\n쿠폰 상태를 확인하는 중...")
-    try:
-        event_name, found = coupons.list_coupons(watch)
-    except Exception as e:
-        print("  확인 실패:", e)
-        return
-    if not found:
-        print("  이 이벤트에서 쿠폰을 찾지 못했어요.")
-        return
-    print(f"\n[{event_name}]")
-    for i, c in enumerate(found, 1):
-        print(f"  {i}. {coupons.describe(c)}")
-    if len(found) > 1:
-        print("\n감시할 쿠폰 번호를 쉼표로 입력하세요. (예: 1,3)  전부: 그냥 엔터")
-        nums = [x for x in ask("쿠폰 번호 > ").replace(" ", "").split(",") if x]
-        picks = [found[int(n) - 1]["key"] for n in nums if n.isdigit() and 1 <= int(n) <= len(found)]
-        watch["picks"] = picks
-    default_name = f"{CHAIN_NAME[chain]} {event_name}".strip()
-    new_name = ask(f"\n알림에 표시할 이름 (그대로 쓰려면 엔터) [{default_name}] > ")
-    watch["name"] = new_name or default_name
-    config.setdefault("coupon_watches", []).append(watch)
-    save_config(config)
-    push_config(f"쿠폰 감시 추가: {watch['name']}")
-    roles = config.get("device_roles") or {}
-    where = "휴대폰" if chain in roles.get("phone", []) else "오라클 서버"
-    print(f"✅ 쿠폰 감시 '{watch['name']}' 추가 완료! ({where}가 5분 안에 받아서 시작해요)")
 
+    # 고른 것들을 이벤트별로 묶음 -> 이벤트 하나당 감시 하나
+    picked = {}   # 이벤트번호 -> (이벤트이름, [쿠폰키...] 또는 None=전체)
+    if s.replace(",", "").replace(" ", "").isdigit():
+        for n in s.replace(" ", "").split(","):
+            if not n.isdigit() or not 1 <= int(n) <= len(rows):
+                print(f"  '{n}'번은 목록에 없어서 건너뜁니다.")
+                continue
+            no, event_name, _, c, _ = rows[int(n) - 1]
+            name, keys = picked.get(no, (event_name, []))
+            if c is None or keys is None:
+                keys = None          # 이벤트 전체
+            else:
+                keys.append(c["key"])
+            picked[no] = (name, keys)
+    else:
+        link_chain, no = coupons.parse_event_link(s)
+        if not link_chain:
+            print("  주소에서 이벤트 번호를 찾지 못했어요. (메가박스 eventNo=, CGV evntNo=, 롯데시네마 eventId= 가 들어간 주소)")
+            return
+        if link_chain != chain:
+            print(f"  {CHAIN_NAME[link_chain]} 주소라서 {CHAIN_NAME[link_chain]} 감시로 추가할게요.")
+            chain = link_chain
+        try:
+            event_name, found = coupons.list_coupons({"chain": chain, "event_no": no})
+        except Exception as e:
+            print("  확인 실패:", e)
+            return
+        print(f"\n[{event_name}]")
+        for i, c in enumerate(found, 1):
+            print(f"  {i}. {coupons.describe(c)}")
+        keys = None
+        if len(found) > 1:
+            nums = [x for x in ask("감시할 쿠폰 번호 (쉼표로, 전부: 엔터) > ").replace(" ", "").split(",") if x]
+            keys = [found[int(x) - 1]["key"] for x in nums if x.isdigit() and 1 <= int(x) <= len(found)] or None
+        picked[no] = (event_name, keys)
+    if not picked:
+        return
+
+    added = []
+    for no, (event_name, keys) in picked.items():
+        watch = {"chain": chain, "event_no": no, "picks": keys or []}
+        default_name = f"{CHAIN_NAME[chain]} {event_name}".strip()
+        new_name = ask(f"\n알림에 표시할 이름 (그대로 쓰려면 엔터) [{default_name}] > ")
+        watch["name"] = new_name or default_name
+        config.setdefault("coupon_watches", []).append(watch)
+        added.append(watch["name"])
+    save_config(config)
+    push_config("쿠폰 감시 추가: " + ", ".join(added))
+    roles = config.get("device_roles") or {}
+    where = "휴대폰이" if chain in roles.get("phone", []) else "오라클 서버가"
+    for n in added:
+        print(f"✅ 쿠폰 감시 '{n}' 추가 완료!")
+    print(f"   ({where} 5분 안에 받아서 시작해요)")
 
 def set_webhook(config):
     print("\n디스코드 채널 설정 > 연동 > 웹후크 > 새 웹후크 > '웹후크 URL 복사' 로 얻은 주소를 붙여넣으세요.")
@@ -325,7 +354,7 @@ def test_message(config):
 
 def make_server_script(config):
     if not get_webhook_url():
-        print("먼저 5번 메뉴에서 디스코드 웹후크를 설정하세요.")
+        print("먼저 8번 메뉴에서 디스코드 웹후크를 설정하세요.")
         return
     try:
         path, size, targets = build_cloud_init()
@@ -343,7 +372,7 @@ def make_server_script(config):
 
 def make_phone_script(config):
     if not get_webhook_url():
-        print("먼저 5번 메뉴에서 디스코드 웹후크를 설정하세요.")
+        print("먼저 8번 메뉴에서 디스코드 웹후크를 설정하세요.")
         return
     try:
         path, size, targets = build_phone_script()
@@ -405,16 +434,16 @@ def main():
     menu = [
         ("CGV 영화관 추가", add_cgv),
         ("메가박스 영화관 추가", add_megabox),
+        ("롯데시네마 영화관 추가", add_lotte),
+        ("빈자리 감시 추가", add_seat_watch),
+        ("쿠폰 취소분 감시 추가", add_coupon_watch),
         ("등록된 감시 목록", list_targets),
         ("감시 삭제", remove_target),
         ("디스코드 웹후크 설정", set_webhook),
         ("테스트 알림 보내기", test_message),
         ("오라클 서버 설치 파일 만들기", make_server_script),
         ("휴대폰 설치 파일 만들기", make_phone_script),
-        ("빈자리 감시 추가", add_seat_watch),
         ("GitHub에 지금 올리기", manual_push),
-        ("롯데시네마 영화관 추가", add_lotte),
-        ("쿠폰 취소분 감시 추가", add_coupon_watch),
     ]
     while True:
         print("\n===== 예매 오픈 알리미 설정 =====")

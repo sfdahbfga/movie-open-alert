@@ -1,6 +1,7 @@
 # 선착순 할인 쿠폰(빵원티켓 / 서프라이즈·스피드 쿠폰 / 무비싸다구) 취소분 감시
 # - 로그인 없이 보이는 정보만 사용 (쿠폰 받기, 예매는 하지 않음)
 # - '마감 → 다시 받을 수 있음'으로 바뀌면 디스코드로 알림
+import html as htmllib
 import json
 import os
 import re
@@ -56,11 +57,20 @@ def cgv_detail(event_no):
     return data["data"]
 
 
-def cgv_active_events():
-    """지금 진행 중인 서프라이즈/스피드 쿠폰 이벤트 -> [(이벤트번호, 영화이름)]"""
-    data = http_json(f"{CGV_API}/evtSprsSpeed/searchSprsSpeedEvtMovPostr", headers=CGV_HEADERS,
-                     params={"coCd": "A420"})
-    return [(e["evntNo"], e.get("movNm") or "") for e in data.get("data") or []]
+def cgv_list_events():
+    """진행 중인 CGV 서프라이즈/스피드 쿠폰 이벤트 전체 -> [(이벤트번호, 이름, 기간)]
+    (이벤트 목록 전체를 받아서 이름으로 고름. 분류 03=영화 이벤트, 나머지 분류도 혹시 몰라 같이 봄)"""
+    found = {}
+    for lcls in ("03", "01", "05"):
+        data = http_json(f"{CGV_API}/evt/searchEvtListForPage", headers=CGV_HEADERS,
+                         params={"coCd": "A420", "evntCtgryLclsCd": lcls, "sscnsChoiYn": "N", "expnYn": "N",
+                                 "expoChnlCd": "01", "startRow": 0, "listCount": 1000})
+        for e in ((data.get("data") or {}).get("list") or []):
+            name = e.get("evntNm") or ""
+            if re.search(r"(서프라이즈|스피드)\s*쿠폰", name):
+                period = f"{str(e.get('evntStartDt'))[:10]} ~ {str(e.get('evntEndDt'))[:10]}"
+                found[e["evntNo"]] = (e["evntNo"], name, period)
+    return sorted(found.values(), key=lambda x: x[0], reverse=True)
 
 
 def cgv_coupons(watch):
@@ -104,6 +114,22 @@ def megabox_event_url(event_no):
     return f"https://www.megabox.co.kr/event/detail?eventNo={event_no}"
 
 
+def megabox_list_events():
+    """진행 중인 메가박스 빵원티켓 이벤트 전체 -> [(이벤트번호, 이름, 기간)] (빵원굿즈는 제외)"""
+    body = {"currentPage": "1", "recordCountPerPage": "1000", "eventStatCd": "ONG", "eventTitle": "빵원",
+            "eventDivCd": "", "eventTyCd": "", "orderReqCd": "ONGlist"}
+    page = http_request("https://www.megabox.co.kr/on/oh/ohe/Event/eventMngDiv.do", json_body=body,
+                        headers={**MEGA_HEADERS, "Accept": "text/html, */*",
+                                 "X-Requested-With": "XMLHttpRequest",
+                                 "Referer": "https://www.megabox.co.kr/event"}).decode("utf-8", "replace")
+    found = {}
+    for no, title, date in re.findall(r'data-no="(\d+)"[\s\S]{0,800}?<p class="tit">([^<]+)</p>[\s\S]{0,300}?<p class="date">([^<]+)</p>', page):
+        title = htmllib.unescape(title).strip()
+        if "빵원티켓" in title:
+            found[no] = (no, title, " ".join(date.split()))
+    return list(found.values())
+
+
 def _megabox_parse(html):
     title = re.search(r"<title>([^<]*)</title>", html)
     name = re.search(r'class="n1">([^<]+)</dd>', html)
@@ -113,7 +139,7 @@ def _megabox_parse(html):
     a = html.find("function fn_zecCponDraw")
     b = html.find("function fn_insertEventCdl", a)
     if a < 0 or b < 0:
-        raise RuntimeError("메가박스 이벤트 페이지에서 쿠폰 정보를 찾지 못했어요 (빵원티켓 이벤트가 맞는지 확인)")
+        return htmllib.unescape(event_name), kind, [], []   # 아직 쿠폰이 안 붙은 이벤트(시작 전 등)
     draw = html[a:b]
     buttons = re.findall(r'id="btnInsertEvt_(\d+)_"[^>]*>\s*<span>([^<]+)</span>', html)
     coupons = []
@@ -138,10 +164,10 @@ def _megabox_parse(html):
         coupons.append({"sold": float(rate.group(1)) >= 100,
                         "nums": (cnt.group(1), lmt.group(1)) if cnt and lmt else None})
     else:
-        raise RuntimeError("빵원티켓 형식의 이벤트가 아니에요")
+        return htmllib.unescape(event_name), kind, [], []
     if not coupons:
         raise RuntimeError("메가박스 쿠폰 표시를 읽지 못했어요 (페이지 형식이 바뀌었을 수 있어요)")
-    return event_name, kind, coupons, buttons
+    return htmllib.unescape(event_name), kind, coupons, buttons
 
 
 def megabox_coupons(watch):
@@ -173,6 +199,20 @@ LOTTE_HEADERS = {
 
 def lotte_event_url(event_id):
     return f"https://www.lottecinema.co.kr/NLCMW/Event/EventTemplateSpeedMulti?eventId={event_id}"
+
+
+def lotte_list_events():
+    """진행 중인 무비싸다구 이벤트 -> [(이벤트번호, 이름, 기간)]
+    무비싸다구는 일반 이벤트 목록에 없고 모바일 홈 화면의 '상시 이벤트' 영역에 링크가 있음"""
+    mobile_ua = ("Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 "
+                 "(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36")
+    page = http_request("https://www.lottecinema.co.kr/NLCMW",
+                        headers={"User-Agent": mobile_ua, "Accept": "text/html"}, timeout=30).decode("utf-8", "replace")
+    ids = []
+    for no in re.findall(r"EventTemplateSpeed\w*\?eventId=(\d+)", page):
+        if no not in ids:
+            ids.append(no)
+    return [(no, "무비싸다구", "") for no in ids]
 
 
 def lotte_coupons(watch):
@@ -222,6 +262,26 @@ SITES = {
     "megabox": (megabox_coupons, megabox_event_url),
     "lottecinema": (lotte_coupons, lotte_event_url),
 }
+LIST_EVENTS = {"cgv": cgv_list_events, "megabox": megabox_list_events, "lottecinema": lotte_list_events}
+
+
+def all_active_coupons(chain):
+    """그 체인의 진행 중 쿠폰을 전부 -> [(이벤트번호, 이벤트이름, 기간, 쿠폰 또는 None, 오류)]
+    쿠폰 정보가 아직 없는(시작 전) 이벤트는 쿠폰 None으로 한 줄"""
+    rows = []
+    for no, name, period in LIST_EVENTS[chain]():
+        try:
+            event_name, found = SITES[chain][0]({"chain": chain, "event_no": no})
+            # 목록의 이벤트 제목이 더 자세함 (롯데시네마는 목록에 이름이 없어서 상세 이름 사용)
+            event_name = name if name and name != "무비싸다구" else (event_name or name)
+            if not found:
+                rows.append((no, event_name, period, None, "아직 쿠폰 정보 없음 (시작 전일 수 있음)"))
+            for c in found:
+                rows.append((no, event_name, period, c, ""))
+        except Exception as e:
+            rows.append((no, name, period, None, f"확인 실패: {e}"))
+        time.sleep(0.3)   # 목록을 볼 때도 요청을 조금씩 띄움
+    return rows
 
 
 def parse_event_link(text):
