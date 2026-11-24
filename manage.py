@@ -14,8 +14,15 @@ from server_script import build_cloud_init, build_phone_script
 CHAIN_NAME = {"cgv": "CGV", "megabox": "메가박스", "lottecinema": "롯데시네마"}
 
 
+class InputCancelled(Exception):
+    """입력 중에 0을 넣으면 지금 하던 추가/설정을 통째로 취소"""
+
+
 def ask(prompt):
-    return input(prompt).strip()
+    s = input(prompt).strip()
+    if s == "0":
+        raise InputCancelled()
+    return s
 
 
 def choose(items, label):
@@ -453,12 +460,16 @@ def main():
         for i, (title, _) in enumerate(menu, 1):
             print(f" {i}. {title}")
         print(" 0. 종료")
-        s = ask("메뉴 번호 > ")
+        s = input("메뉴 번호 > ").strip()
         if s == "0":
             break
         if s.isdigit() and 1 <= int(s) <= len(menu):
+            print("  ※ 입력하다가 0을 입력하면 언제든 취소하고 메뉴로 돌아가요.")
             try:
                 menu[int(s) - 1][1](config)
+            except InputCancelled:
+                print("\n↩ 입력을 취소했어요. 아무것도 저장하지 않았습니다.")
+                config = load_config()   # 중간에 바뀐 내용이 남지 않게 저장된 설정으로 되돌림
             except Exception as e:
                 print("오류가 발생했습니다:", e)
 
