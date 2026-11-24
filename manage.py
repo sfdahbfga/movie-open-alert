@@ -262,13 +262,16 @@ def add_coupon_watch(config):
         print("  목록을 불러오지 못했어요:", e)
         rows = []
     if rows:
-        print(f"\n진행 중인 쿠폰 전체 ({len(rows)}개):")
-        last_event = None
-        for i, (no, event_name, period, c, err) in enumerate(rows, 1):
+        print(f"\n진행 중인 쿠폰 전체 ({len(rows)}개) — 종류별, 시작일 빠른 순")
+        last_section = last_event = None
+        for i, (section, no, event_name, period, c, err) in enumerate(rows, 1):
+            if section != last_section:
+                print(f"\n━━━━━━━━ {section} ━━━━━━━━")
+                last_section, last_event = section, None
             if no != last_event:
-                print(f"\n  ■ {event_name}" + (f"  [{period}]" if period else ""))
+                print(f"\n  ■ {event_name}" + (f"   ({coupons.short_period(period)})" if period else ""))
                 last_event = no
-            print(f"    {i}. " + (coupons.describe(c) if c else f"(이벤트 전체) — {err}"))
+            print(f"     {i:>2}. " + (coupons.describe(c) if c else f"(이벤트 전체) — {err}"))
     else:
         print("  지금 진행 중인 쿠폰을 찾지 못했어요.")
     print("\n감시할 번호를 쉼표로 입력하세요. (예: 1,4,5)")
@@ -284,7 +287,7 @@ def add_coupon_watch(config):
             if not n.isdigit() or not 1 <= int(n) <= len(rows):
                 print(f"  '{n}'번은 목록에 없어서 건너뜁니다.")
                 continue
-            no, event_name, _, c, _ = rows[int(n) - 1]
+            _, no, event_name, _, c, _ = rows[int(n) - 1]
             name, keys = picked.get(no, (event_name, []))
             if c is None or keys is None:
                 keys = None          # 이벤트 전체

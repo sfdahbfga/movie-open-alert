@@ -90,7 +90,8 @@ def cgv_coupons(watch):
             nxt = next((t for t in tiers if int(t.get("fcfsStartSeq") or 0) <= used + 1 <= int(t.get("fcfsEndSeq") or 0)), tiers[-1])
             result.append({
                 "key": str(c.get("dcNo")),
-                "label": c.get("onlnExpoNm") or d.get("evntNm") or "쿠폰",
+                "label": "선착순 쿠폰",   # 이벤트 하나에 쿠폰 하나라서 이벤트 이름으로 충분
+                "start": start, "end": end,
                 "available": used < total,
                 "remaining": max(0, total - used), "total": total,
                 "price": f"{_won(nxt.get('dcAmt'))} 할인" if nxt.get("dcAmt") else "",
@@ -116,8 +117,9 @@ def megabox_event_url(event_no):
 
 def megabox_list_events():
     """진행 중인 메가박스 빵원티켓 이벤트 전체 -> [(이벤트번호, 이름, 기간)] (빵원굿즈는 제외)"""
-    body = {"currentPage": "1", "recordCountPerPage": "1000", "eventStatCd": "ONG", "eventTitle": "빵원",
-            "eventDivCd": "", "eventTyCd": "", "orderReqCd": "ONGlist"}
+    # '전체' 탭(eventDivCd 빈 값)은 메인 노출분만 줘서, '영화' 탭(CED01) 전체를 받아서 고름
+    body = {"currentPage": "1", "recordCountPerPage": "1000", "eventStatCd": "ONG", "eventTitle": "",
+            "eventDivCd": "CED01", "eventTyCd": "", "orderReqCd": "ONGlist"}
     page = http_request("https://www.megabox.co.kr/on/oh/ohe/Event/eventMngDiv.do", json_body=body,
                         headers={**MEGA_HEADERS, "Accept": "text/html, */*",
                                  "X-Requested-With": "XMLHttpRequest",
@@ -152,12 +154,13 @@ def _megabox_parse(html):
             if "coupon " not in body:
                 continue
             sold = "' end\"" in body or "사용완료" in body
-            nums = re.search(r'<span>\s*([\d,]+)\s*</span>\s*/\s*([\d,]+)', body)
+            # 예) '<span>' + 0 + '</span> / ' + 4600   (앞 숫자 = 사용 수량, 뒤 숫자 = 전체)
+            nums = re.search(r"<span>'\s*\+\s*([\d,]+)\s*\+\s*'</span>\s*/\s*'\s*\+\s*([\d,]+)", body)
             coupons.append({"sold": sold, "nums": nums.groups() if nums else None})
     elif kind == "ZEC":
         sec = draw[draw.find("sbscTyCd == 'ZEC'"):draw.find("sbscTyCd == 'ZECP'")]
-        lmt = re.search(r'var lmtCnt = "([\d,]*)"', sec)
-        cnt = re.search(r'var cponCnt = "([\d,]*)"', sec)
+        lmt = re.search(r'var lmtCnt = "\s*([\d,]*)\s*"', sec)
+        cnt = re.search(r'var cponCnt = "\s*([\d,]*)\s*"', sec)
         rate = re.search(r"_\.toNumber\('([\d.]*)'\)", sec)
         if not rate or rate.group(1) == "":
             raise RuntimeError("메가박스 쿠폰 수량을 읽지 못했어요")
@@ -170,16 +173,31 @@ def _megabox_parse(html):
     return htmllib.unescape(event_name), kind, coupons, buttons
 
 
+def _megabox_period(html):
+    m = re.search(r"(20\d\d)\.(\d\d)\.(\d\d)\s*~\s*(20\d\d)\.(\d\d)\.(\d\d)", html)
+    if not m:
+        return None, None
+    y1, m1, d1, y2, m2, d2 = map(int, m.groups())
+    return datetime(y1, m1, d1), datetime(y2, m2, d2, 23, 59, 59)
+
+
 def megabox_coupons(watch):
     html = http_request(megabox_event_url(watch["event_no"]), headers=MEGA_HEADERS).decode("utf-8", "replace")
     event_name, kind, coupons, buttons = _megabox_parse(html)
+    start, end = _megabox_period(html)
+    now = datetime.now()
+    active = (not start or now >= start) and (not end or now <= end)
     result = []
     for i, c in enumerate(coupons):
+        # 쿠폰 이름은 페이지의 버튼 글자 (시작 전에는 버튼이 없어서 번호로)
         label = buttons[i][1].strip() if i < len(buttons) else f"쿠폰 {i + 1}"
-        # 페이지의 'N / 전체' 숫자가 사용 수량인지 남은 수량인지 확실하지 않아서 그대로 보여줌
-        shown = f"페이지 표시 {c['nums'][0]} / {c['nums'][1]}" if c["nums"] else ""
+        remaining = total = None
+        if c["nums"]:
+            used, total = (int(x.replace(",", "") or 0) for x in c["nums"])
+            remaining = max(0, total - used)
         result.append({"key": f"{i + 1}", "label": label, "available": not c["sold"],
-                       "remaining": None, "total": None, "price": shown, "active": True})
+                       "remaining": remaining, "total": total, "price": "", "active": active,
+                       "start": start, "end": end})
     return event_name, result
 
 
@@ -249,7 +267,7 @@ def lotte_coupons(watch):
             "available": cur is not None,
             "remaining": remaining, "total": total,
             "price": f"{_won(cur.get('DisplayCouponName'))} 관람" if cur and str(cur.get("DisplayCouponName", "")).isdigit() else "",
-            "active": active,
+            "active": active, "start": start, "end": end,
         })
     return d.get("EventName") or "", result
 
@@ -265,23 +283,59 @@ SITES = {
 LIST_EVENTS = {"cgv": cgv_list_events, "megabox": megabox_list_events, "lottecinema": lotte_list_events}
 
 
+# 쿠폰 종류(칸) 순서: CGV는 스피드 → 서프라이즈, 메가박스는 사이트처럼 빵원티켓 플러스 → 빵원티켓
+SECTION_ORDER = ["스피드 쿠폰", "서프라이즈 쿠폰", "빵원티켓 플러스", "빵원티켓", "무비싸다구", "기타"]
+
+
+def coupon_section(chain, event_name):
+    if chain == "cgv":
+        if "스피드" in event_name:
+            return "스피드 쿠폰"
+        if "서프라이즈" in event_name:
+            return "서프라이즈 쿠폰"
+    elif chain == "megabox":
+        return "빵원티켓 플러스" if ("➕" in event_name or "플러스" in event_name) else "빵원티켓"
+    elif chain == "lottecinema":
+        return "무비싸다구"
+    return "기타"
+
+
+def short_period(period):
+    """'2026.11.25 ~ 2026.12.22' / '2026-11-16 ~ 2026-12-01' -> '11/25 ~ 12/22'"""
+    dates = re.findall(r"20\d\d[.-](\d\d)[.-](\d\d)", period or "")
+    return " ~ ".join(f"{int(m)}/{int(d)}" for m, d in dates) or (period or "")
+
+
+def _period_start(period):
+    m = re.search(r"(20\d\d)[.-](\d\d)[.-](\d\d)", period or "")
+    return datetime(*map(int, m.groups())) if m else None
+
+
 def all_active_coupons(chain):
-    """그 체인의 진행 중 쿠폰을 전부 -> [(이벤트번호, 이벤트이름, 기간, 쿠폰 또는 None, 오류)]
+    """그 체인의 진행 중 쿠폰을 전부, 종류(칸)별 → 시작일 빠른 순으로
+    -> [(칸, 이벤트번호, 이벤트이름, 기간, 쿠폰 또는 None, 오류)]
     쿠폰 정보가 아직 없는(시작 전) 이벤트는 쿠폰 None으로 한 줄"""
     rows = []
     for no, name, period in LIST_EVENTS[chain]():
+        ev_start = _period_start(period)
         try:
             event_name, found = SITES[chain][0]({"chain": chain, "event_no": no})
             # 목록의 이벤트 제목이 더 자세함 (롯데시네마는 목록에 이름이 없어서 상세 이름 사용)
             event_name = name if name and name != "무비싸다구" else (event_name or name)
             if not found:
-                rows.append((no, event_name, period, None, "아직 쿠폰 정보 없음 (시작 전일 수 있음)"))
+                rows.append([no, event_name, period, None, "아직 쿠폰 정보 없음 (시작 전일 수 있음)", ev_start])
             for c in found:
-                rows.append((no, event_name, period, c, ""))
+                rows.append([no, event_name, period, c, "", c.get("start") or ev_start])
         except Exception as e:
-            rows.append((no, name, period, None, f"확인 실패: {e}"))
+            rows.append([no, name, period, None, f"확인 실패: {e}", ev_start])
         time.sleep(0.3)   # 목록을 볼 때도 요청을 조금씩 띄움
-    return rows
+    far = datetime(2999, 1, 1)
+    # 이벤트 단위로 묶어서: 칸 순서 → 이벤트에서 가장 빠른 시작일 → 이벤트 안에서 쿠폰 시작일
+    first_start = {}
+    for r in rows:
+        first_start[r[0]] = min(first_start.get(r[0], far), r[5] or far)
+    rows.sort(key=lambda r: (SECTION_ORDER.index(coupon_section(chain, r[1])), first_start[r[0]], r[0], r[5] or far))
+    return [(coupon_section(chain, r[1]), r[0], r[1], r[2], r[3], r[4]) for r in rows]
 
 
 def parse_event_link(text):
@@ -312,9 +366,13 @@ def describe(c):
     if c.get("remaining") is not None and c.get("total"):
         parts.append(f"남은 수량 {c['remaining']:,} / {c['total']:,}")
     if not c.get("active", True):
-        parts.append("기간 아님")
-    status = "받을 수 있음" if c["available"] else "마감"
-    return f"{c['label']} — {status}" + (f" ({', '.join(parts)})" if parts else "")
+        start = c.get("start")
+        status = "시작 전" if start and datetime.now() < start else "기간 종료"
+        if start and status == "시작 전":
+            parts.append(f"{start.month}/{start.day} 시작")
+    else:
+        status = "받을 수 있음" if c["available"] else "마감"
+    return f"{c['label']} — {status}" + (f" · {', '.join(parts)}" if parts else "")
 
 
 class CouponWatcher:
