@@ -36,21 +36,7 @@
       "movie_name": "극장판 치이카와: 인어 섬의 비밀"
     }
   ],
-  "seat_watches": [
-    {
-      "chain": "cgv",
-      "site_no": "0110",
-      "movie_keyword": "치이",
-      "showing_keyword": "",
-      "dates": [
-        "20261125"
-      ],
-      "times": [
-        "09:20"
-      ],
-      "name": "CGV 천안펜타포트 치이 1125"
-    }
-  ],
+  "seat_watches": [],
   "seat_filter": {
     "cgv": {
       "seat_kinds": [
