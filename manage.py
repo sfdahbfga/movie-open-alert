@@ -287,20 +287,15 @@ def add_coupon_watch(config):
     if not s:
         return
 
-    # 고른 것들을 이벤트별로 묶음 -> 이벤트 하나당 감시 하나
-    picked = {}   # 이벤트번호 -> (이벤트이름, [쿠폰키...] 또는 None=전체)
+    # 고른 쿠폰 하나하나를 각각의 감시로 (하나를 받는 데 성공하면 그것만 지울 수 있게)
+    chosen = []   # (이벤트번호, 이벤트이름, 쿠폰 또는 None=이벤트 전체)
     if s.replace(",", "").replace(" ", "").isdigit():
         for n in s.replace(" ", "").split(","):
             if not n.isdigit() or not 1 <= int(n) <= len(rows):
                 print(f"  '{n}'번은 목록에 없어서 건너뜁니다.")
                 continue
             _, no, event_name, _, c, _ = rows[int(n) - 1]
-            name, keys = picked.get(no, (event_name, []))
-            if c is None or keys is None:
-                keys = None          # 이벤트 전체
-            else:
-                keys.append(c["key"])
-            picked[no] = (name, keys)
+            chosen.append((no, event_name, c))
     else:
         link_chain, no = coupons.parse_event_link(s)
         if not link_chain:
@@ -317,29 +312,92 @@ def add_coupon_watch(config):
         print(f"\n[{event_name}]")
         for i, c in enumerate(found, 1):
             print(f"  {i}. {coupons.describe(c)}")
-        keys = None
-        if len(found) > 1:
+        if not found:
+            chosen.append((no, event_name, None))
+        elif len(found) == 1:
+            chosen.append((no, event_name, found[0]))
+        else:
             nums = [x for x in ask("감시할 쿠폰 번호 (쉼표로, 전부: 엔터) > ").replace(" ", "").split(",") if x]
-            keys = [found[int(x) - 1]["key"] for x in nums if x.isdigit() and 1 <= int(x) <= len(found)] or None
-        picked[no] = (event_name, keys)
-    if not picked:
+            picks = [found[int(x) - 1] for x in nums if x.isdigit() and 1 <= int(x) <= len(found)] or found
+            chosen += [(no, event_name, c) for c in picks]
+    if not chosen:
         return
 
-    added = []
-    for no, (event_name, keys) in picked.items():
-        watch = {"chain": chain, "event_no": no, "picks": keys or []}
-        default_name = f"{CHAIN_NAME[chain]} {event_name}".strip()
-        new_name = ask(f"\n알림에 표시할 이름 (그대로 쓰려면 엔터) [{default_name}] > ")
-        watch["name"] = new_name or default_name
-        config.setdefault("coupon_watches", []).append(watch)
-        added.append(watch["name"])
+    existing = {(w["chain"], w["event_no"], tuple(w.get("picks") or [])) for w in config.get("coupon_watches") or []}
+    new_watches = []
+    for no, event_name, c in chosen:
+        watch = make_coupon_watch(chain, no, f"{CHAIN_NAME[chain]} {event_name}".strip(), c)
+        if (chain, no, tuple(watch["picks"])) in existing:
+            print(f"  이미 감시 중이라 건너뜀: {watch['name']}")
+            continue
+        existing.add((chain, no, tuple(watch["picks"])))
+        new_watches.append(watch)
+    if not new_watches:
+        return
+    if len(new_watches) == 1:
+        new_name = ask(f"\n알림에 표시할 이름 (그대로 쓰려면 엔터) [{new_watches[0]['name']}] > ")
+        if new_name:
+            new_watches[0]["name"] = new_name
+    config.setdefault("coupon_watches", []).extend(new_watches)
     save_config(config)
-    push_config("쿠폰 감시 추가: " + ", ".join(added))
+    push_config("쿠폰 감시 추가: " + ", ".join(w["name"] for w in new_watches))
     roles = config.get("device_roles") or {}
     where = "휴대폰이" if chain in roles.get("phone", []) else "오라클 서버가"
-    for n in added:
-        print(f"✅ 쿠폰 감시 '{n}' 추가 완료!")
+    for w in new_watches:
+        print(f"✅ 쿠폰 감시 '{w['name']}' 추가 완료!")
     print(f"   ({where} 5분 안에 받아서 시작해요)")
+
+def make_coupon_watch(chain, event_no, base_name, c):
+    """쿠폰 하나짜리 감시. c가 None이면 아직 쿠폰 정보가 없는 이벤트 전체(나중에 쿠폰별로 나눔)"""
+    if c is None:
+        return {"chain": chain, "event_no": event_no, "picks": [], "name": base_name}
+    # CGV는 이벤트 하나에 쿠폰이 하나라 이벤트 이름으로 충분
+    if chain == "cgv":
+        name = base_name
+    else:
+        # 메가박스는 같은 영화로 기간만 다른 이벤트가 여러 개라 기간을 붙여서 구분
+        period = ""
+        if chain == "megabox" and c.get("start") and c.get("end"):
+            period = f" ({c['start'].month}/{c['start'].day}~{c['end'].month}/{c['end'].day})"
+        name = f"{base_name}{period} · {c['label']}"
+    return {"chain": chain, "event_no": event_no, "picks": [c["key"]], "coupon_label": c["label"], "name": name}
+
+
+def split_coupon_watches(config):
+    """예전처럼 쿠폰 여러 개를 하나로 묶은 감시를 쿠폰별 감시로 나눔 (프로그램 시작 때 자동)"""
+    old = config.get("coupon_watches") or []
+    todo = [w for w in old if "coupon_label" not in w]
+    if not todo:
+        return
+    result, changed = [], False
+    seen = {(w["chain"], w["event_no"], tuple(w.get("picks") or [])) for w in old if "coupon_label" in w}
+    for w in old:
+        if "coupon_label" in w:
+            result.append(w)
+            continue
+        try:
+            _, found = coupons.SITES[w["chain"]][0]({"chain": w["chain"], "event_no": w["event_no"]})
+        except Exception:
+            found = None
+        if not found:          # 아직 쿠폰 정보가 없거나 확인 실패 -> 그대로 두고 다음에 다시
+            result.append(w)
+            continue
+        picks = set(w.get("picks") or [])
+        for c in found:
+            if picks and c["key"] not in picks:
+                continue
+            nw = make_coupon_watch(w["chain"], w["event_no"], w["name"], c)
+            k = (nw["chain"], nw["event_no"], tuple(nw["picks"]))
+            if k not in seen:
+                seen.add(k)
+                result.append(nw)
+        changed = True
+    if changed:
+        config["coupon_watches"] = result
+        save_config(config)
+        print(f"ℹ 쿠폰 감시를 쿠폰별로 나눴어요. (쿠폰 감시 {len(old)}개 → {len(result)}개)")
+        push_config("쿠폰 감시를 쿠폰별로 나눔")
+
 
 def set_webhook(config):
     print("\n디스코드 채널 설정 > 연동 > 웹후크 > 새 웹후크 > '웹후크 URL 복사' 로 얻은 주소를 붙여넣으세요.")
@@ -455,6 +513,10 @@ def manual_push(config):
 def main():
     git_pull()
     config = load_config()
+    try:
+        split_coupon_watches(config)
+    except Exception as e:
+        print("⚠ 쿠폰 감시 나누기 실패(나중에 다시 시도):", e)
     menu = [
         ("CGV 영화관 추가", add_cgv),
         ("메가박스 영화관 추가", add_megabox),
