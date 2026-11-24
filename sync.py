@@ -11,7 +11,7 @@ import hashlib
 from common import BASE_DIR, http_request, load_json, save_json, save_log_info, save_log_error
 
 DEVICE_PATH = os.path.join(BASE_DIR, "device.json")   # 이 기기 설정 (어떤 체인을 돌릴지, 저장소 주소)
-CODE_FILES = ["main.py", "common.py", "cgv.py", "megabox.py", "lotte.py", "seats.py", "sync.py"]
+CODE_FILES = ["main.py", "common.py", "cgv.py", "megabox.py", "lotte.py", "seats.py", "sync.py", "coupons.py"]
 CHECK_SECONDS = 300  # 5분 (GitHub 비로그인 요청 제한: 시간당 60번 → 5분마다면 12번이라 여유)
 
 
@@ -103,7 +103,7 @@ def describe_config_change(old_cfg, new_cfg, chains):
     def names(cfg, key):
         return {e.get("name", "?") for e in cfg.get(key) or [] if not chains or e.get("chain") in chains}
     lines = []
-    for key, label in (("targets", "예매 오픈"), ("seat_watches", "빈자리")):
+    for key, label in (("targets", "예매 오픈"), ("seat_watches", "빈자리"), ("coupon_watches", "쿠폰")):
         before, after = names(old_cfg, key), names(new_cfg, key)
         lines += [f"➕ {label}: {n}" for n in sorted(after - before)]
         lines += [f"➖ {label}: {n}" for n in sorted(before - after)]

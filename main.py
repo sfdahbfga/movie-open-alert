@@ -11,6 +11,10 @@ import megabox
 from seats import seat_watch_main, Pacer
 from sync import sync_main, device_chains
 try:
+    from coupons import coupon_watch_main   # 쿠폰 취소분 감시 (파일이 아직 없는 옛 설치본에서도 멈추지 않게)
+except ImportError:
+    coupon_watch_main = None
+try:
     import lotte   # 롯데시네마 (파일이 아직 없는 옛 설치본에서도 멈추지 않게)
 except ImportError:
     lotte = None
@@ -202,6 +206,8 @@ def main():
                if (not chains or t["chain"] in chains) and t["chain"] in FETCHERS]
     seat_watches = [w for w in config.get("seat_watches") or []
                     if (not chains or w["chain"] in chains) and w["chain"] in FETCHERS]
+    coupon_watches = [w for w in config.get("coupon_watches") or []
+                      if coupon_watch_main and (not chains or w["chain"] in chains)]
     interval = max(30, int(config.get("interval_seconds", 60)))
 
     threading.Thread(target=sender_main, daemon=True).start()
@@ -212,18 +218,20 @@ def main():
     threading.Thread(target=heartbeat_main, daemon=True).start()
     install_watchdog()
     threading.Thread(target=sync_main, args=(message_queue,), daemon=True).start()
-    if not targets and not seat_watches:
+    if not targets and not seat_watches and not coupon_watches:
         print("이 기기에서 감시할 대상이 없습니다. (저장소에 추가되면 자동으로 시작돼요)")
         message_queue.put("ℹ️ 알리미가 켜졌지만 이 기기에서 감시할 대상이 없어요. 저장소에 추가되면 자동으로 시작돼요.")
         while True:
             time.sleep(60)
 
-    print(f"예매 오픈 알리미 시작 — 예매 오픈 {len(targets)}곳, 빈자리 {len(seat_watches)}건 감시, "
+    print(f"예매 오픈 알리미 시작 — 예매 오픈 {len(targets)}곳, 빈자리 {len(seat_watches)}건, 쿠폰 {len(coupon_watches)}건 감시, "
           f"{interval}초마다 확인 (종료: Ctrl+C)")
     for t in targets:
         print(f"  - [{CHAIN_NAME[t['chain']]}] {t['name']}")
     for w in seat_watches:
         print(f"  - [{CHAIN_NAME[w['chain']]} 빈자리] {w['name']}")
+    for w in coupon_watches:
+        print(f"  - [{CHAIN_NAME[w['chain']]} 쿠폰] {w['name']}")
     if not get_webhook_url():
         print("※ 디스코드 웹후크가 설정되지 않아 이 창에만 알림이 표시됩니다.")
 
@@ -231,6 +239,7 @@ def main():
     lines = [f"✅ 예매 오픈 알리미 시작 ({interval}초 간격)"]
     lines += [f"· 예매 오픈: {t['name']}" for t in targets]
     lines += [f"· 빈자리: {w['name']}" for w in seat_watches]
+    lines += [f"· 쿠폰: {w['name']}" for w in coupon_watches]
     message_queue.put("\n".join(lines))
 
     for t in targets:
@@ -245,6 +254,11 @@ def main():
                          args=(w, config, message_queue, pacers[w["chain"]], status, interval, ERROR_ALERT_COUNT),
                          daemon=True).start()
         time.sleep(3)  # 감시를 3초 간격으로 시작해서 요청이 한꺼번에 몰리지 않게
+
+    for w in coupon_watches:
+        threading.Thread(target=coupon_watch_main,
+                         args=(w, message_queue, status, interval, ERROR_ALERT_COUNT), daemon=True).start()
+        time.sleep(2)
 
     try:
         while True:

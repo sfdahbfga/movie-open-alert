@@ -8,7 +8,7 @@ import tarfile
 from common import BASE_DIR, load_config, save_json, get_webhook_url
 
 OUTPUT_PATH = os.path.join(BASE_DIR, "oracle_setup.sh")
-APP_FILES = ["main.py", "common.py", "cgv.py", "megabox.py", "lotte.py", "seats.py", "sync.py"]
+APP_FILES = ["main.py", "common.py", "cgv.py", "megabox.py", "lotte.py", "seats.py", "sync.py", "coupons.py"]
 LIMIT = 30000  # 오라클 cloud-init 크기 제한(약 32KB)보다 조금 작게
 
 TEMPLATE = r"""#!/bin/bash
@@ -131,7 +131,8 @@ def _build(template, output_path, role):
     """chains에 해당하는 영화관만 담아서 설치 스크립트를 만듦"""
     config = load_config()
     chains = set((config.get("device_roles") or {}).get(role) or [])
-    mine = [e for e in config["targets"] + (config.get("seat_watches") or []) if e["chain"] in chains]
+    mine = [e for e in config["targets"] + (config.get("seat_watches") or []) + (config.get("coupon_watches") or [])
+            if e["chain"] in chains]
     if not mine and not config.get("sync_repo"):
         raise RuntimeError("이 설치 파일에 넣을 감시 대상이 없습니다.")
     # 이 기기가 맡을 체인 + 자동 동기화 저장소 (감시 목록 전체는 그대로 넣고, 실행할 때 체인으로 거름)

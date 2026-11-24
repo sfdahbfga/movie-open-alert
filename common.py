@@ -21,6 +21,7 @@ DEFAULT_CONFIG = {
     "sync_repo": "",          # 자동 동기화할 GitHub 저장소 (예: "아이디/movie-open-alert"). 비우면 동기화 안 함
     "targets": [],            # 예매 오픈(새 회차) 감시 목록
     "seat_watches": [],       # 빈자리 감시 목록
+    "coupon_watches": [],     # 선착순 할인 쿠폰 취소분 감시 목록
     # 빈자리 감시에서 '일반석'으로 볼 값 (2026-11 실제 응답에서 확인한 값. 극장마다 다르면 여기서 고치세요)
     #   빈 리스트 [] 로 두면 그 항목은 거르지 않음
     "seat_filter": {

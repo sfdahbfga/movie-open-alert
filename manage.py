@@ -7,6 +7,7 @@ from datetime import datetime
 import cgv
 import megabox
 import lotte
+import coupons
 from common import BASE_DIR, load_config, save_config, send_discord, get_webhook_url, set_webhook_url, pretty_date
 from server_script import build_cloud_init, build_phone_script
 
@@ -143,6 +144,8 @@ def _all_entries(config):
                for i, t in enumerate(config["targets"])]
     entries += [("seat_watches", i, f"[{CHAIN_NAME[w['chain']]} 빈자리] {w['name']}")
                 for i, w in enumerate(config.get("seat_watches") or [])]
+    entries += [("coupon_watches", i, f"[{CHAIN_NAME[w['chain']]} 쿠폰] {w['name']}")
+                for i, w in enumerate(config.get("coupon_watches") or [])]
     return entries
 
 
@@ -243,6 +246,60 @@ def add_seat_watch(config):
     save_config(config)
     push_config(f"빈자리 감시 추가: {watch['name']}")
     print(f"✅ 빈자리 감시 '{watch['name']}' 추가 완료!")
+
+
+def add_coupon_watch(config):
+    print("\n선착순 할인 쿠폰 취소분 감시를 추가합니다.")
+    print("  (메가박스 빵원티켓·플러스, CGV 서프라이즈·스피드 쿠폰, 롯데시네마 무비싸다구)")
+    print("  마감된 쿠폰이 취소로 다시 풀리면 디스코드로 알려 줘요. 쿠폰 받기는 앱에서 직접 하세요.")
+    try:
+        active = coupons.cgv_active_events()
+    except Exception as e:
+        active = []
+        print("  (CGV 진행 중 쿠폰 목록을 불러오지 못함:", e, ")")
+    if active:
+        print("\n지금 진행 중인 CGV 서프라이즈/스피드 쿠폰:")
+        for i, (no, mov) in enumerate(active, 1):
+            print(f"  {i}. {mov}  (이벤트번호 {no})")
+        print("  → 위 번호를 입력하거나, 다른 이벤트는 주소를 붙여넣으세요.")
+    print("\n이벤트 페이지 주소를 붙여넣으세요. (브라우저 주소창의 주소 전체)")
+    s = ask("번호 또는 주소 (취소: 엔터) > ")
+    if not s:
+        return
+    if s.isdigit() and active and 1 <= int(s) <= len(active):
+        chain, event_no = "cgv", active[int(s) - 1][0]
+    else:
+        chain, event_no = coupons.parse_event_link(s)
+    if not chain:
+        print("  주소에서 이벤트 번호를 찾지 못했어요. (메가박스 eventNo=, CGV evntNo=, 롯데시네마 eventId= 가 들어간 주소)")
+        return
+    watch = {"chain": chain, "event_no": event_no, "picks": []}
+    print("\n쿠폰 상태를 확인하는 중...")
+    try:
+        event_name, found = coupons.list_coupons(watch)
+    except Exception as e:
+        print("  확인 실패:", e)
+        return
+    if not found:
+        print("  이 이벤트에서 쿠폰을 찾지 못했어요.")
+        return
+    print(f"\n[{event_name}]")
+    for i, c in enumerate(found, 1):
+        print(f"  {i}. {coupons.describe(c)}")
+    if len(found) > 1:
+        print("\n감시할 쿠폰 번호를 쉼표로 입력하세요. (예: 1,3)  전부: 그냥 엔터")
+        nums = [x for x in ask("쿠폰 번호 > ").replace(" ", "").split(",") if x]
+        picks = [found[int(n) - 1]["key"] for n in nums if n.isdigit() and 1 <= int(n) <= len(found)]
+        watch["picks"] = picks
+    default_name = f"{CHAIN_NAME[chain]} {event_name}".strip()
+    new_name = ask(f"\n알림에 표시할 이름 (그대로 쓰려면 엔터) [{default_name}] > ")
+    watch["name"] = new_name or default_name
+    config.setdefault("coupon_watches", []).append(watch)
+    save_config(config)
+    push_config(f"쿠폰 감시 추가: {watch['name']}")
+    roles = config.get("device_roles") or {}
+    where = "휴대폰" if chain in roles.get("phone", []) else "오라클 서버"
+    print(f"✅ 쿠폰 감시 '{watch['name']}' 추가 완료! ({where}가 5분 안에 받아서 시작해요)")
 
 
 def set_webhook(config):
@@ -357,6 +414,7 @@ def main():
         ("빈자리 감시 추가", add_seat_watch),
         ("GitHub에 지금 올리기", manual_push),
         ("롯데시네마 영화관 추가", add_lotte),
+        ("쿠폰 취소분 감시 추가", add_coupon_watch),
     ]
     while True:
         print("\n===== 예매 오픈 알리미 설정 =====")

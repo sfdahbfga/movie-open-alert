@@ -13,3 +13,4 @@ __pycache__/
 heartbeat.txt
 watchdog_restart.txt
 watchdog.sh
+coupon_state.json
