@@ -130,15 +130,6 @@
     },
     {
       "chain": "megabox",
-      "event_no": "21691",
-      "picks": [
-        "1"
-      ],
-      "coupon_label": "빵원쿠폰",
-      "name": "메가박스 [실낙원] 선착순 빵원티켓 (11/19~11/25) · 빵원쿠폰"
-    },
-    {
-      "chain": "megabox",
       "event_no": "21690",
       "picks": [
         "1"
