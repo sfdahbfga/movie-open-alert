@@ -94,15 +94,6 @@
     },
     {
       "chain": "megabox",
-      "event_no": "21656",
-      "picks": [
-        "1"
-      ],
-      "coupon_label": "쿠폰 1",
-      "name": "메가박스 [폴2: 데드포인트] 선착순 빵원티켓 ➕ (11/17~11/24) · 쿠폰 1"
-    },
-    {
-      "chain": "megabox",
       "event_no": "21672",
       "picks": [
         "1"
