@@ -411,9 +411,17 @@ def is_git_repo():
 def git_pull():
     if not is_git_repo():
         return
-    r = _git("pull", "--ff-only")
+    # 내 PC에서 만든(아직 못 올린) 감시 변경이 있어도, 저장소 최신 내용 위에 다시 얹어서 받음
+    r = _git("pull", "--rebase")
     if r.returncode != 0:
+        _git("rebase", "--abort")   # 겹쳐서 못 합쳤으면 원래 상태로 되돌림
         print("⚠ 저장소의 최신 내용을 받지 못했어요:", (r.stderr or r.stdout).strip()[:300])
+        return
+    # 예전에 올리지 못한 감시 변경이 남아 있으면 지금 올림
+    ahead = _git("rev-list", "--count", "@{u}..HEAD").stdout.strip()
+    if ahead.isdigit() and int(ahead) > 0:
+        if _git("push").returncode == 0:
+            print(f"☁ 전에 못 올린 감시 변경 {ahead}건을 GitHub에 올렸어요.")
 
 
 def push_config(message):
@@ -428,6 +436,12 @@ def push_config(message):
         print("ℹ 올릴 변경 사항이 없어요.")
         return
     r = _git("push")
+    if r.returncode != 0:
+        # 그사이 저장소에 다른 변경(프로그램 업데이트 등)이 올라왔으면 받아서 합친 뒤 다시 올림
+        if _git("pull", "--rebase").returncode == 0:
+            r = _git("push")
+        else:
+            _git("rebase", "--abort")
     if r.returncode == 0:
         print("☁ GitHub에 올렸어요. 서버와 휴대폰에 5분 안에 자동으로 적용돼요.")
     else:
