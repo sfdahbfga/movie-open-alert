@@ -85,15 +85,6 @@
   "coupon_watches": [
     {
       "chain": "megabox",
-      "event_no": "21643",
-      "picks": [
-        "1"
-      ],
-      "coupon_label": "0원 관람 쿠폰",
-      "name": "메가박스 [미트 페어런츠 4] 선착순 빵원티켓 ➕ (11/16~12/1) · 0원 관람 쿠폰"
-    },
-    {
-      "chain": "megabox",
       "event_no": "21672",
       "picks": [
         "1"
